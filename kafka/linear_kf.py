@@ -20,23 +20,25 @@ implementation basically performs a very fast update of the filter."""
 # You should have received a copy of the GNU General Public License
 # along with KaFKA.  If not, see <http://www.gnu.org/licenses/>.
 
-__author__ = "J Gomez-Dans"
-__copyright__ = "Copyright 2017 J Gomez-Dans"
-__version__ = "1.0 (09.03.2017)"
-__license__ = "GPLv3"
-__email__ = "j.gomez-dans@ucl.ac.uk"
-
 from collections import namedtuple
 import numpy as np
 import scipy.sparse as sp
 
 from utils import  matrix_squeeze, spsolve2, reconstruct_array
 
+__author__ = "J Gomez-Dans"
+__copyright__ = "Copyright 2017 J Gomez-Dans"
+__version__ = "1.0 (09.03.2017)"
+__license__ = "GPLv3"
+__email__ = "j.gomez-dans@ucl.ac.uk"
+
 Metadata = namedtuple('Metadata', 'mask uncertainty')
 
 
 class LinearKalman (object):
-    """The main Kalman filter class operating in raster datasets"""
+    """The main Kalman filter class operating in raster data sets. Note that the
+    goal of this class is not to consider complex, time evolving models, but
+    rather grotty "0-th" order models!"""
     def __init__(self, observations, observation_times,
                 observation_metadata, output_array, output_unc,
                  n_params=1):
@@ -49,12 +51,92 @@ class LinearKalman (object):
         self.output = output_array
         self.output_unc = output_unc
 
+    def _dump_output(self, step, timestep, x_analysis, P_analysis):
+        """Store the output somewhere for further use. This method is called
+        after each time step, so if several observations are available within
+        the same timestep, it will be the combined result of all observations.
+        Currently, only outputting to numpy arrays...
+        Parameters
+        ----------
+        step: integer
+            The "band" in the output array
+        timestep: integer
+            The actual timestep (e.g. DoY or something like that)
+        x_analysis: array
+            The analysis state vector
+        P_analysis: array
+            The analysis state covariance
+        """
+        # Needs to take self.n_params into account
+        if self.n_params > 1:
+            N = self.output.shape[2] * self.output.shape[3]
+            for param in xrange(self.n_params):
+                self.output[step, param, :, :] = x_analysis[
+                                               (param * N):(
+                                               (param + 1) * N)].reshape(
+                    (self.output.shape[2:]))
+                self.output_unc[step, param, :, :] = P_analysis.diagonal()[
+                                                   (param * N):(
+                                                   (param + 1) * N)].reshape(
+                    (self.output.shape[2:]))
+        else:
+            self.output[step, :, :] = x_analysis.reshape((self.output.shape[1:]))
+            self.output_unc[step, :, :] = P_analysis.diagonal().reshape(
+                self.output.shape[1:])
+
+    def _get_observations_timestep(self, timestep, band=None):
+        """A method that returns the observations, mask and uncertainty for a
+        particular timestep. It is envisaged that applications will specialise
+        this method to efficiently read and process raster datasets from disk,
+        but this version will just select from a numpy array or something.
+
+        Parameters
+        ----------
+        timestep: int
+            This is the time step that we require the information for.
+        band: int
+            For multiband datasets, this selects the band to use, or `None` if
+            single band dataset is used.
+
+        Returns
+        -------
+        Observations (N*N), uncertainty (N*N) and mask (N*N) arrays, as well
+        as relevant metadata
+        """
+        # Start with the mask
+        mask = self.metadata[timestep].mask
+        # Fish out the observations
+        if band is None:
+            observations = self.observations[timestep]
+            R_mat = self.create_uncertainty(
+                self.metadata[timestep].uncertainty, mask)
+
+        else:
+            observations = self.observations[timestep][band]
+            R_mat = self.create_uncertainty(
+                self.metadata[timestep].uncertainty[band], mask)
+
+        return observations, R_mat, mask.ravel(), self.metadata[timestep]
+
     def set_trajectory_model(self):
+        """In a Kalman filter, the state is progated from time `t` to `t+1`
+        using a model. We assume that this model is a matrix, and for the time
+        being, the matrix is the identity matrix. That's how we roll!"""
         n = self.observations.shape[1]*self.observations.shape[2]
         self.trajectory_model = sp.eye(self.n_params*n, self.n_params*n,
                                        format="csr")
 
-    def set_trajectory_uncertainty(self,Q):
+    def set_trajectory_uncertainty(self, Q):
+        """In a Kalman filter, the model that propagates the state from time
+        `t` to `t+1` is assumed to be *wrong*, and this is indicated by having
+        additive Gaussian noise, which we assume is zero-mean, and controlled by
+        a covariance matrix `Q`. Here, you can provide the main diagonal of `Q`.
+
+        Parameters
+        -----------
+        Q: array
+            The main diagonal of the model uncertainty covariance matrix.
+        """
         n = self.observations.shape[1]*self.observations.shape[2]
         self.trajectory_uncertainty = sp.eye(self.n_params*n, self.n_params*n,
                                        format="csr").dot(Q)
@@ -93,13 +175,13 @@ class LinearKalman (object):
         is_first = True
         for ii,timestep in enumerate(np.arange(self.observation_times.min(),
                                   self.observation_times.max() + 1)):
-            # First locate all available observations for the time step of interest.
+            # First locate all available observations for time step of interest.
             # Note that there could be more than one...
             locate_times = [i for i, x in enumerate(self.observation_times)
                         if x == timestep]
 
             if not is_first:
-                x_forecast, P_forecast = self.advance ( x_analysis, P_analysis)
+                x_forecast, P_forecast = self.advance(x_analysis, P_analysis)
             is_first = False
             if len(locate_times) == 0:
                 # Just advance the time
@@ -111,20 +193,10 @@ class LinearKalman (object):
                                  band=band, approx_diagonal=approx_diagonal,
                                  refine_diag=refine_diag,
                                  iter_obs_op=iter_obs_op, is_robust=is_robust)
-            # Needs to take self.n_params into account
-            if self.n_params > 1:
-                N = self.output.shape[2] * self.output.shape[3]
-                for param in xrange(self.n_params):
-                    self.output[ii, param, :, :] = x_analysis[
-                        (param*N):((param+1)*N)].reshape((self.output.shape[2:]))
-                    self.output_unc[ii, param, :, :] = P_analysis.diagonal()[
-                        (param*N):((param+1)*N)].reshape((self.output.shape[2:]))
-            else:
-                self.output[ii,:,:] = x_analysis.reshape((self.output.shape[1:]))
-                self.output_unc[ii, :, :] = P_analysis.diagonal().reshape(
-                self.output.shape[1:])
 
-    def assimilate ( self, locate_times, x_forecast, P_forecast,
+            self._dump_output(ii, timestep, x_analysis, P_analysis)
+
+    def assimilate(self, locate_times, x_forecast, P_forecast,
                    band=None, approx_diagonal=True, refine_diag=False,
                    iter_obs_op=False, is_robust=False):
         """The method assimilates the observatins at timestep `timestep`, using
@@ -133,8 +205,9 @@ class LinearKalman (object):
         #import pdb;pdb.set_trace()
         for step in locate_times:
             print step
-            # Extract the data mask from the metadata
-            mask = self.metadata[step].mask.ravel()
+            # Extract observations, mask and uncertainty for the current time
+            observations, R_mat, mask, the_metadata = \
+                self._get_observations_timestep(step, band)
             # The assimilation works if data is there, so we need to reduce the
             # rank of the matrices by ignoring the masked data. `matrix_squeeze`
             # helps with this...
@@ -142,27 +215,14 @@ class LinearKalman (object):
             P_forecast_prime = matrix_squeeze(P_forecast, mask=mask,
                                               n_params=self.n_params)
 
-            # Depending on whether we have single or multiband data, we grab
-            # the observations and uncertainties. Maybe this could be an
-            # external method that can be overriden by the user
-            if band is None:
-                # Fish out the data
-                observations = self.observations[step]
-                R_mat = self.create_uncertainty(
-                    self.metadata[step].uncertainty, mask)
-            else:
-                # we are specifying a particular band to be used
-                observations = self.observations[step][band]
-                R_mat = self.create_uncertainty(
-                    self.metadata[step].uncertainty[band], mask)
             # MAIN ITERATION loop
             # In an EKF, we would iterate and update the observation operator
             # until convergence is reached. If the observation operator is
             # linear, then no iterations are needed.
 
             while True:
-                H_matrix = self.create_observation_operator (
-                    self.metadata[step], x_forecast )
+                H_matrix = self.create_observation_operator(the_metadata,
+                                                              x_forecast )
                 # At this stage, we have a forecast (prior), the observations
                 # and the observation operator, so we proceed with the
                 # assimilation
@@ -190,16 +250,16 @@ class LinearKalman (object):
                     kalman_gain1 = P_forecast_prime.dot (XX)
 
 
-                x_forecast_prime = matrix_squeeze(x_forecast, mask=mask,
+                x_forecast_prime = matrix_squeeze(x_forecast, mask=mask.ravel(),
                                                   n_params=self.n_params)
                 x_analysis_prime = x_forecast_prime + \
-                                   kalman_gain*(observations.ravel()[mask] - \
+                                   kalman_gain*(observations.ravel()[mask.ravel()] - \
                                        H_matrix.dot(x_forecast_prime))
                 P_analysis_prime = ((sp.eye(kalman_gain.shape[0], kalman_gain.shape[0])
                                - kalman_gain*H_matrix)*P_forecast_prime)
                 # Now move
                 x_analysis = reconstruct_array ( x_analysis_prime, x_forecast,
-                                                 mask, n_params=self.n_params)
+                                                 mask.ravel(), n_params=self.n_params)
                 small_diagonal = np.array(P_analysis_prime.diagonal()).squeeze()
                 big_diagonal = np.array(P_forecast.diagonal()).squeeze()
                 P_analysis_diag = reconstruct_array(small_diagonal, big_diagonal,
@@ -220,9 +280,9 @@ class LinearKalman (object):
 #                    # outliers
                 if converged:
                     break
-
-
             return x_analysis, P_analysis
+
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import matplotlib.animation as animation
