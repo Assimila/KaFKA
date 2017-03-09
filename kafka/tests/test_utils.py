@@ -27,6 +27,15 @@ class TestSqueezeMatrix:
         assert np.array_equal(squeeze_matrix, expected_result)
 
 
+    def test_squeeze_just_matrix_extra_zeros(self):
+        """Are zero filled rows and columns removed when mask=None.
+        Some zero elements should be retained."""
+        test_matrix = np.array([[1, 0, 0], [0, 0, 0], [7, 0, 9]])
+        expected_result = np.array([[1, 0], [7, 9]])
+        squeeze_matrix = matrix_squeeze(test_matrix)
+        assert np.array_equal(squeeze_matrix, expected_result)
+
+
     def test_squeeze_just_matrix_no_zeros(self):
         """Does a matrix return unchanged when there are no zero filled
         columns and rows."""
