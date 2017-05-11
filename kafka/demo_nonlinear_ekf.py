@@ -182,7 +182,7 @@ class BHRKalman (NonLinearKalman):
                 '{0:s}":MOD_Grid_BRDF:BRDF_Albedo_Parameters_{1:s}'.format(fich,
                                                                            band)
         g = gdal.Open(fname)
-        data = g.ReadAsArray()[:, :512, :512]
+        data = g.ReadAsArray()#[:, :512, :512]
         mask = np.all(data != 32767, axis=0)
         data = np.where(mask, data * 0.001, np.nan)
 
@@ -193,12 +193,12 @@ class BHRKalman (NonLinearKalman):
         fname = 'HDF4_EOS:EOS_GRID:' + \
                 '"{0:s}":MOD_Grid_BRDF:BRDF_Albedo_Quality'.format(fich)
         g = gdal.Open(fname)
-        qa = g.ReadAsArray()[:512, :512]
+        qa = g.ReadAsArray()#[:512, :512]
         LOG.info("\tReading Snow")
         fname = 'HDF4_EOS:EOS_GRID:' + \
                 '"{0:s}":MOD_Grid_BRDF:Snow_BRDF_Albedo'.format(fich)
         g = gdal.Open(fname)
-        snow = g.ReadAsArray()[:512, :512]
+        snow = g.ReadAsArray()#[:512, :512]
         # qa used to define R_mat **and** mask. Don't know what to do with
         # snow information really... Ignore it?
         mask = mask * (qa != 255)  # This is OK pixels
@@ -315,7 +315,8 @@ if __name__ == "__main__":
     # test methods
     #bhr, R_mat, mask, metadata = kalman._get_observations_timestep(1,
     #                                                               band=0)
-    n_pixels = 512*512
+    tilewidth = 2400
+    n_pixels = tilewidth*tilewidth#512*512
     # Defining the prior
     sigma = np.array([0.12, 0.7, 0.0959, 0.15, 1.5, 0.2, 5])
     x0 = np.array([0.17, 1.0, 0.1, 0.7, 2.0, 0.18, 1.5])
@@ -335,7 +336,7 @@ if __name__ == "__main__":
     Q = np.ones(n_pixels*7)*0.1
     Q[-n_pixels:] = 1. # LAI
     
-    kalman.set_trajectory_model ( 512, 512)
+    kalman.set_trajectory_model(tilewidth, tilewidth)#(( 512, 512)
     kalman.set_trajectory_uncertainty(Q, 512, 512)
 
     # Need to set the trajectory model and uncertainty inflation
