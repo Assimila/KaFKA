@@ -98,7 +98,13 @@ class MODISKernelLinearKalman (KernelLinearKalman):
         LOG.info("Reading timestep >>> %d" % timestep)
         QA_OK = np.array([8, 72, 136, 200, 1032, 1288, 2056, 2120, 2184, 2248])
         qa = self.observations.qa.GetRasterBand(timestep+1).ReadAsArray()
-        mask = np.in1d(qa, QA_OK).reshape((2400,2400))
+        try:
+            mask = np.in1d(qa, QA_OK).reshape((2400,2400))
+        except ValueError:
+            if np.in1d(qa, QA_OK).shape == 1:
+                mask =np.zeros(2400, 2400)
+            else:
+                raise
         sza = self.observations.sza.GetRasterBand(timestep + 1).ReadAsArray()
         vza = self.observations.vza.GetRasterBand(timestep + 1).ReadAsArray()
         saa = self.observations.saa.GetRasterBand(timestep + 1).ReadAsArray()

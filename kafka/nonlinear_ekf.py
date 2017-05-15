@@ -62,6 +62,8 @@ class NonLinearKalman (LinearKalman):
         
     def _dump_output(self, ii, timestep, x_analysis, P_analysis, 
                                P_analysis_inverse):
+        LOG.info('Saving. Timestep {0}, step {1}'.format(timestep, ii))
+        import pdb; pdb.set_trace()
         pass
 
     def create_observation_operator(self, metadata, x_forecast, band):
