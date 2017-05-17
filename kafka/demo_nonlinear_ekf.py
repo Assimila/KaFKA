@@ -95,13 +95,8 @@ class BHRKalman (NonLinearKalman):
                 '{0:s}":MOD_Grid_BRDF:BRDF_Albedo_Parameters_{1:s}'.format(fich,
                                                                            band)
         g = gdal.Open(fname)
-<<<<<<< Updated upstream
         data = g.ReadAsArray()[:, (self.x0):(self.x0+self.nx), 
                                (self.y0):(self.y0+self.ny)]
-=======
-        tilewidth = 600#2400 #512
-        data = g.ReadAsArray()[:, :tilewidth, :tilewidth]
->>>>>>> Stashed changes
         mask = np.all(data != 32767, axis=0)
         data = np.where(mask, data * 0.001, np.nan)
 
@@ -112,23 +107,17 @@ class BHRKalman (NonLinearKalman):
         fname = 'HDF4_EOS:EOS_GRID:' + \
                 '"{0:s}":MOD_Grid_BRDF:BRDF_Albedo_Quality'.format(fich)
         g = gdal.Open(fname)
-<<<<<<< Updated upstream
-
         qa = g.ReadAsArray()[(self.x0):(self.x0+self.nx), 
                                (self.y0):(self.y0+self.ny)]
-=======
-        qa = g.ReadAsArray()[:tilewidth, :tilewidth]#[:512, :512]
->>>>>>> Stashed changes
+
         LOG.info("\tReading Snow")
         fname = 'HDF4_EOS:EOS_GRID:' + \
                 '"{0:s}":MOD_Grid_BRDF:Snow_BRDF_Albedo'.format(fich)
         g = gdal.Open(fname)
-<<<<<<< Updated upstream
         snow = g.ReadAsArray()[(self.x0):(self.x0+self.nx), 
                                (self.y0):(self.y0+self.ny)]
-=======
-        snow = g.ReadAsArray()[:tilewidth, :tilewidth]#[:512, :512]
->>>>>>> Stashed changes
+
+
         # qa used to define R_mat **and** mask. Don't know what to do with
         # snow information really... Ignore it?
         mask = mask * (qa != 255)  # This is OK pixels
@@ -245,12 +234,7 @@ if __name__ == "__main__":
     # test methods
     #bhr, R_mat, mask, metadata = kalman._get_observations_timestep(1,
     #                                                               band=0)
-<<<<<<< Updated upstream
-
     tilewidth = 300#2400
-=======
-    tilewidth = 600#2400
->>>>>>> Stashed changes
     n_pixels = tilewidth*tilewidth#512*512
     
     outputs = []
@@ -298,10 +282,7 @@ if __name__ == "__main__":
     Q[-n_pixels:] = 1. # LAI
     
     kalman.set_trajectory_model(tilewidth, tilewidth)#(( 512, 512)
-<<<<<<< Updated upstream
 
-=======
->>>>>>> Stashed changes
     kalman.set_trajectory_uncertainty(Q,tilewidth, tilewidth) # 512, 512)
 
     # Need to set the trajectory model and uncertainty inflation

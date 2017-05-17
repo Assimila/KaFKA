@@ -68,9 +68,20 @@ class MODISKernelLinearKalman (KernelLinearKalman):
         
     def _dump_output(self, step, timestep, x_analysis, P_analysis, 
                      P_analysis_inverse):
-        x = x_analysis[:(2400*2400)].reshape((2400,2400))
+
+        x_iso =  x_analysis[:(2400*2400)].reshape((2400,2400))
+        x_vol =  x_analysis[(2400*2400):2*(2400*2400)].reshape((2400,2400))
+        x_geo =  x_analysis[2*(2400*2400):3*(2400*2400)].reshape((2400,2400))
+
+        BHR = x_iso+x_vol*0.189184 + x_geo*1.377622
         LOG.info("saving. Timestep %d, step %d" % (timestep, step))
-        self.output.GetRasterBand(timestep+1).WriteArray(x)
+        self.output.GetRasterBand(timestep+1).WriteArray(BHR)
+        
+        
+
+        #x = x_analysis[:(2400*2400)].reshape((2400,2400))
+        #LOG.info("saving. Timestep %d, step %d" % (timestep, step))
+        #self.output.GetRasterBand(timestep+1).WriteArray(x)
         self.output.GetRasterBand(timestep+1).SetMetadata({'DoY':"%d"%(timestep)})
         LOG.info("**NOT** saving the whole state, only Isotropic. CHANGEME")
         if timestep % 10 == 0:
@@ -101,10 +112,8 @@ class MODISKernelLinearKalman (KernelLinearKalman):
         try:
             mask = np.in1d(qa, QA_OK).reshape((2400,2400))
         except ValueError:
-            if np.in1d(qa, QA_OK).shape == 1:
-                mask =np.zeros(2400, 2400)
-            else:
-                raise
+            print np.in1d(qa, QA_OK).shape
+            mask =np.zeros((2400, 2400))
         sza = self.observations.sza.GetRasterBand(timestep + 1).ReadAsArray()
         vza = self.observations.vza.GetRasterBand(timestep + 1).ReadAsArray()
         saa = self.observations.saa.GetRasterBand(timestep + 1).ReadAsArray()
@@ -128,7 +137,7 @@ if __name__ == "__main__":
     g = gdal.Open(the_dir + "brdf_2010_b01.vrt")
     days = np.array([int(g.GetRasterBand(i+1).GetMetadata()['DoY'])
                             for i in xrange(g.RasterCount)])
-
+    days = np.array([340, 341, 342, 343, 344, 345, 346])
     modis_obs = MODIS_observations( days,
                 gdal.Open(os.path.join(the_dir, "statekm_2010.vrt")),
                 gdal.Open(os.path.join(the_dir, "SensorZenith_2010.vrt")),
@@ -146,7 +155,7 @@ if __name__ == "__main__":
     # We can now create the output
     # stuff stuff stuff
     drv = gdal.GetDriverByName("GTiff")
-    dst_ds = drv.Create ("tmp/nadir.tif", 2400, 2400, 366, gdal.GDT_Float32,
+    dst_ds = drv.Create ("tmp/test_bhr_band3.tif", 2400, 2400, 366, gdal.GDT_Float32,
                           ['COMPRESS=DEFLATE', 'BIGTIFF=YES', 'PREDICTOR=1',
                            'TILED=YES'])
     dst_ds.SetProjection(modis_obs[1].GetProjection())
@@ -164,5 +173,6 @@ if __name__ == "__main__":
     # The following runs the filter over time, selecting band 2 (NIR)
     # In order to calcualte BB albedos, you need to run the filter over
     # all bands, but you can do this in parallel
-    kf.run(x_forecast, P_forecast, None, band=2, refine_diag=False)
+    kf.run(x_forecast, P_forecast, None, band=3, refine_diag=False)
     dst_ds = None
+    LOG.info("FINISHED")
